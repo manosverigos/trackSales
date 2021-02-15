@@ -1,0 +1,21 @@
+{
+  "name": "tracksales",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "dotenv": "^8.2.0",
+    "fs": "0.0.1-security",
+    "jsdom": "^16.4.0",
+    "mongodb": "^3.6.4",
+    "nodemailer": "^6.4.18",
+    "puppeteer": "^7.0.1",
+    "qs": "^6.9.6"
+  }
+}
