@@ -1,14 +1,12 @@
-// const Datastore = require('nedb')
-// const db = new Datastore('database.db');
-// db.loadDatabase();
+require("dotenv").config();
 const mongodb = require("mongodb");
 const { MongoClient } = require("mongodb");
 
 const nodemailer = require("nodemailer");
 
 overdueList = async () => {
-  require("dotenv").config();
-  const uri = `mongodb+srv://manosverigos:admin@cluster0.pbkow.mongodb.net/ecommerce?retryWrites=true&w=majority`;
+
+  const uri = process.env.MONGO_DB_URI
 
   const client = new MongoClient(uri, {
     useNewUrlParser: true,
@@ -18,69 +16,141 @@ overdueList = async () => {
   try {
     await client.connect();
     const database = client.db("eshop");
-    const collection = database.collection("offers");
+    const collection = database.collection("test_offers");
 
-    const resultOverdue = await collection.find({ overdue: true }).toArray();
-    await collection.updateMany(
-      { overdue: true },
-      { $set: { warning: "done" } }
-    );
+    const resultOverdue = await collection.aggregate([{$project:{
+      products: {
+        $filter: {
+          input: '$products',
+          as: 'product',
+          cond: {$eq: ['$$product.status','overdue']}}
+        }
+      }
+    }]).toArray();
 
-    let text = "";
+    let finalOverdue = resultOverdue.filter(obj => obj.products.length > 0)
 
-    text += "Σύνολο εκπρόθεσμων ενεργειών\n\n";
+    let overdueOffers = []
 
-    for (i = 0; i < resultOverdue.length; i++) {
-      text += `Ενέργεια ${i + 1} \n\n`;
-      text += `ID: ${resultOverdue[i]._id} \n`;
-      text += `Tίτλος: ${resultOverdue[i].title} \n`;
-      text += `Προϊόν / Εταιρία: ${resultOverdue[i].product} \n`;
-      text += `Απαιτούμενη αλλαγή: ${resultOverdue[i].comment} \n`;
-      text += "\n\n";
+    for(offer of finalOverdue){
+      const o_id = new mongodb.ObjectID(`${offer._id}`);
+      const filter = {
+        "_id": o_id
+      }
+      let originalOffer = await collection.findOne(filter)
+      originalOffer.products = offer.products
+      overdueOffers.push(originalOffer)
+    
+      for(prod of offer.products){
+        console.log(prod)
+        await collection.updateOne({"_id": o_id, "products.productID": prod.productID }, { $set: {
+          "products.$.warning": "done"
+        }}, false, true)
+      }
     }
 
-    const resultWarning = await collection.find({ warning: "true" }).toArray();
-    await collection.updateMany(
-      { warning: "true" },
-      { $set: { warning: "done" } }
-    );
+    
+
+    
+
+    const resultWarning = await collection.aggregate([{$project:{
+      products: {
+        $filter: {
+          input: '$products',
+          as: 'product',
+          cond: {$eq: ['$$product.warning','true']}}
+        }
+      }
+    }]).toArray();
+
+    let finalWarning = resultWarning.filter(obj => obj.products.length > 0)
+
+    let warningOffers = []
+
+    for(offer of finalWarning){
+      const o_id = new mongodb.ObjectID(`${offer._id}`);
+      const filter = {
+        "_id": o_id
+      }
+      let originalOffer = await collection.findOne(filter)
+      originalOffer.products = offer.products
+      warningOffers.push(originalOffer)
+    
+      for(prod of offer.products){
+        await collection.updateOne({"_id": o_id, "products.productID": prod.productID }, { $set: {
+          "products.$.warning": "done"
+        }}, false, true)
+      }
+    }
+
+    let text = "";
+    let subject = ''
+
+    if (overdueOffers.length > 0) {
+    text += "Σύνολο εκπρόθεσμων ενεργειών\n\n";
+    subject +=`Εκπρόθεσμες ενέργειες: ${overdueOffers.length}` 
+
+    for (i = 0; i < overdueOffers.length; i++) {
+      text += `Ενέργεια ${i + 1} \n\n`;
+      text += `ID: ${overdueOffers[i]._id} \n`;
+      text += `Tίτλος: ${overdueOffers[i].title} \n`;
+      for(prod of overdueOffers[i].products){
+        if(prod.productID){
+          text += `Προϊόν / Εταιρία:${prod.productID} - ${prod.desc} \n`;
+        }else{
+          text += `Προϊόν / Εταιρία: ${prod.desc} \n`;
+        }
+      }
+      text += `Απαιτούμενη αλλαγή: ${overdueOffers[i].comment} \n`;
+      text += "\n\n";
+    }
+  }
 
     text +=
       "\n\n------------------------------------------------------------------------------------------\n\n";
 
-    if (resultWarning.length > 0) {
+    if (warningOffers.length > 0) {
       text += "\n\n Σύνολο ειδοποιήσεων για προσεχώς εκπρόθεσμες ενέργειες\n\n";
-    }
+      
+      subject += `/ Ειδοποιήσεις: ${warningOffers.length}`
 
-    for (i = 0; i < resultWarning.length; i++) {
+    for (i = 0; i < warningOffers.length; i++) {
       text += `Ενέργεια ${i + 1} \n\n`;
-      text += `ID: ${resultWarning[i]._id} \n`;
-      text += `Tίτλος: ${resultWarning[i].title} \n`;
-      text += `Προϊόν / Εταιρία: ${resultWarning[i].product} \n`;
-      text += `Απαιτούμενη αλλαγή: ${resultWarning[i].comment} \n`;
+      text += `ID: ${warningOffers[i]._id} \n`;
+      text += `Tίτλος: ${warningOffers[i].title} \n`;
+      for(prod of warningOffers[i].products){
+        if(prod.productID){
+          text += `Προϊόν / Εταιρία:${prod.productID} - ${prod.desc} \n`;
+        }else{
+          text += `Προϊόν / Εταιρία: ${prod.desc} \n`;
+        }
+      }
+      text += `Απαιτούμενη αλλαγή: ${warningOffers[i].comment} \n`;
       text += "\n\n";
     }
-
+  }
     var transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: `info@primepharmacy.gr`,
-        pass: `MNBvcxz/.,12345`,
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD,
       },
     });
 
-    let mail_list = 'giorgosv@primepharmacy.gr, manosverigos@hotmail.com, t.nodara@outlook.com'
+    // // let mail_list = 'giorgosv@primepharmacy.gr, manosverigos@hotmail.com, t.nodara@outlook.com'
 
-    //let mail_list = "manosverigos@hotmail.com";
+
+
+    let mail_list = "manosverigos@hotmail.com";
 
     var mailOptions = {
       from: "info@primepharmacy.gr",
       to: mail_list,
-      subject: `Εκπρόθεσμες ενέργειες: ${resultOverdue.length} / Ειδοποιήσεις: ${resultWarning.length}`,
+      subject: subject,
       text: text,
     };
 
-    if((resultOverdue + resultWarning) > 0){
+    if((overdueOffers.length + warningOffers.length) > 0){
       transporter.sendMail(mailOptions, function (error, info) {
       if (error) {
         console.log(error);

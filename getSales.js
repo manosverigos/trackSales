@@ -1,3 +1,4 @@
+require("dotenv").config();
 const axios = require("axios");
 const path = require("path");
 const qs = require("qs");
@@ -7,9 +8,8 @@ const jsdom = require("jsdom");
 const { JSDOM } = jsdom;
 
 setCookie = async () => {
-  let username = `prime`;
-  let password = `FARtessy2019`;
-
+  let username = process.env.USERNAME;
+  let password = process.env.PASSWORD;
   let cookie;
   let url = "https://www.primepharmacy.gr/advisable/login.htm";
   let browser = await puppeteer.launch({

@@ -1,4 +1,4 @@
-// const Datastore = require('nedb')
+require('dotenv').config()
 const mongodb = require("mongodb");
 const { MongoClient } = require("mongodb");
 
@@ -12,11 +12,9 @@ const yyyy = today.getFullYear();
 
 today = yyyy + "-" + mm + "-" + dd;
 
-// const db = new Datastore('database.db');
-// db.loadDatabase();
 
 checkProducts = async () => {
-  const uri = `mongodb+srv://manosverigos:admin@cluster0.pbkow.mongodb.net/ecommerce?retryWrites=true&w=majority`;
+  const uri = process.env.MONGO_DB_URI;
 
   const client = new MongoClient(uri, {
     useNewUrlParser: true,
@@ -26,72 +24,84 @@ checkProducts = async () => {
   try {
     await client.connect();
     const database = client.db("eshop");
-    const collection = database.collection("offers");
+    const collection = database.collection("test_offers");
 
     const resultSales = await collection.find({ type: "sales" }).toArray();
     for (offer of resultSales) {
-      if (!offer.completed && (dayDiff(today, offer.startDate) >= 0)) {
-        let sales = await getSales(offer.startDate, today, offer.product);
-        console.log(sales);
-
-        const o_id = new mongodb.ObjectID(`${offer._id}`);
-        const updatedOffer = await collection.updateOne(
-          { _id: o_id },
-          { $set: { current_sales: await sales } }
-        );
-
-        if (sales >= parseInt(offer.sales_num)) {
-          const overdueOffer = await collection.updateOne(
-            { _id: o_id },
-            { $set: { overdue: true } }
-          );
-        }
-        if (
-          parseInt(offer.sales_num) - sales <= 2 &&
-          !(sales >= offer.sales_num) &&
-          offer.warning != "done"
-        ) {
-          const warningOffer = await collection.updateOne(
-            { _id: o_id },
-            { $set: { warning: "true" } }
-          );
-        }
-        if (parseInt(offer.sales_num) - sales > 2) {
-          const notOverdueOffer = await collection.updateOne(
-            { _id: o_id },
-            { $set: { overdue: false, warning: "false" } }
-          );
-        }
+      const o_id = new mongodb.ObjectID(`${offer._id}`);
+      const filter = {
+        "_id": o_id
       }
+      const off = await collection.findOne(filter)
+      const prods = off.products
+
+      let newProds = []
+
+      for (prod of prods){
+        if (!(prod.status == 'complete') && (dayDiff(today, offer.startDate) >= 0)) {
+          let sales = await getSales(offer.startDate, today, prod.productID);
+          prod.current_sales = sales
+        
+
+        if (sales >= parseInt(prod.sales_num)) {
+          prod.status = 'overdue'
+        }
+
+        if (
+          parseInt(prod.sales_num) - sales <= 2 &&
+          !(sales >= prod.sales_num) &&
+          prod.warning != "done"
+        ) {
+          prod.warning = 'true'
+        }
+
+        if (parseInt(prod.sales_num) - sales > 2) {
+          prod.warning = 'false'
+          prod.status = 'not-overdue'
+        }
+        }
+        newProds.push(prod)
+      }
+      const updatedOffer = await collection.updateOne(
+        filter,
+        { $set: { products: newProds } }
+      );
     }
 
     const resultTime = await collection.find({ type: "time" }).toArray();
 
     for (offer of resultTime) {
       const o_id = new mongodb.ObjectID(`${offer._id}`);
-      if (!offer.completed) {
+      const filter = {
+        "_id": o_id
+      }
+      const off = await collection.findOne(filter)
+      console.log(off)
+      const prod = off.products[0]
+
+      if (!(prod.status == 'complete')) {
         if (dayDiff(today, offer.endDate) >= 0) {
-          const overdueOffer = await collection.updateOne(
-            { _id: o_id },
-            { $set: { overdue: true } }
-          );
+          prod.status = 'overdue'
+          console.log('ok')
         }
         if (
           dayDiff(today, offer.endDate) >= -2 &&
           dayDiff(today, offer.endDate) < 0 &&
-          offer.warning != "done"
+          prod.warning != "done"
         ) {
-          const warningOffer = await collection.updateOne(
-            { _id: o_id },
-            { $set: { warning: "true" } }
-          );
+          prod.warning = 'true'
         }
+
         if (dayDiff(today, offer.endDate) < -2) {
-          const notOverdueOffer = await collection.updateOne(
-            { _id: o_id },
-            { $set: { overdue: false, warning: "false" } }
-          );
+          prod.status = 'not-overdue'
+          prod.warning = 'false'
         }
+
+        let newProds = [prod]
+        const overdueOffer = await collection.updateOne(
+          filter,
+          { $set: { products: newProds } }
+        );
       }
     }
     console.log("check");
@@ -101,36 +111,6 @@ checkProducts = async () => {
   } finally {
     await client.close();
   }
-
-  // db.find({type:'sales'},  async (err,docs) => {
-  //   for (offer of docs){
-  //     if(!offer.completed){
-  //       let sales = await getSales(offer.startDate, today, offer.product)
-  //       console.log(sales)
-  //       db.update({_id:`${offer._id}`}, {$set: {current_sales: await sales}}, (err, docs) => {
-  //         console.log('set sales')
-  //         if(sales > offer.sales_num) {
-  //           db.update({_id:`${offer._id}`}, {$set: {overdue: true}})
-  //         }
-  //         if(sales < offer.sales_num) {
-  //           db.update({_id:`${offer._id}`}, {$set: {overdue: false}})
-  //         }
-  //       })
-  //     }
-  //   }
-  // })
-  // db.find({type:'time'}, (err, docs) => {
-  //   for (offer of docs){
-  //     if(!offer.completed){
-  //       if (isLater(today, offer.endDate)) {
-  //         db.update({_id:`${offer._id}`}, {$set: {overdue: true}})
-  //       }
-  //       if (!isLater(today, offer.endDate)) {
-  //         db.update({_id:`${offer._id}`}, {$set: {overdue: false}})
-  //       }
-  //     }
-  //   }
-  // })
 };
 
 checkProducts();
